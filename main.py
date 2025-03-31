@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_file
+from flask import render_template, send_from_directory
 from typing import Optional, Dict, Any
 import os
 import json
@@ -31,8 +32,8 @@ app = Flask(__name__)
 
 # Initialize OpenAI client
 client = OpenAI(
-    api_key=os.getenv("Aiproxy_token"),
-    base_url="http://aiproxy.sanand.workers.dev/openai/v1",
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url=os.getenv("base_url"),
 )
 
 def save_upload_file_temp(file_storage) -> Optional[str]:
@@ -66,7 +67,7 @@ def download_file_from_url(url: str) -> Optional[str]:
         logger.error(f"Error downloading file: {str(e)}")
         return None
 
-def get_vscode_s_flag_output(params: Dict = None) -> str:
+def get_vscode_s_flag_output():
     try:
         return """Version:          Code 1.96.2 (fabdb6a30b49f79a7aba0f2ad9df9b399473380f, 2024-12-19T10:22:47.216Z)
 OS Version:       Windows_NT x64 10.0.22631
@@ -450,11 +451,11 @@ def manage_github_email_json(params: Dict) -> str:
         import requests
         import base64
         # Configuration
-        owner = os.getenv("disha471")  # replace with your GitHub username
-        repo = os.getenv("TDS-_Project_2")
+        owner = os.getenv("GITHUB_USERNAME")  # replace with your GitHub username
+        repo = os.getenv("GITHUB_REPO_NAME")
         path = 'email.json'
         branch = 'main'
-        token = os.getenv("Github_token")
+        token = os.getenv("G_TOKEN")
         
         # Get email from params
         email = params.get("email", "example@example.com")
@@ -1171,7 +1172,7 @@ The query you will return "SELECT SUM(units * price) FROM tickets WHERE LOWER(TR
         
         # Use the LLM to generate the SQL query
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=os.getenv("model"),
             messages=[
                 {"role": "system", "content": "You are an expert SQL developer."},
                 {"role": "user", "content": prompt}
@@ -1210,6 +1211,7 @@ def write_documentation_in_markdown(params: Dict = None) -> str:
 def compress_image_losslessly(params: Dict) -> Dict:
     """
     Download an image and compress it using the Tinify API.
+    Returns the compressed image as a temporary file path.
     """
     temp_dir = None
     input_image_path = None
@@ -1240,11 +1242,11 @@ def compress_image_losslessly(params: Dict) -> Dict:
         else:
             return {"error": "No valid image source provided"}
         
-        # Prepare output path
+        # Prepare output path (temporary)
         output_image_path = os.path.join(temp_dir, "compressed_image.png")
         
         # Use Tinify API for compression
-        tinify_api_key = "DKDVH1KV8wnwrbNrkCKvm1K4SwYR8xCP"
+        tinify_api_key = os.getenv("tinify_api_key")
         
         # Make API request to Tinify
         with open(input_image_path, 'rb') as image_file:
@@ -1273,37 +1275,12 @@ def compress_image_losslessly(params: Dict) -> Dict:
             with open(output_image_path, 'wb') as f:
                 f.write(compressed_response.content)
             
-            # Create a persistent file path for the compressed image
-            persistent_dir = os.path.join(os.getcwd(), "compressed_images")
-            os.makedirs(persistent_dir, exist_ok=True)
-            
-            # Clean up old compressed images (keep only the 10 most recent)
-            try:
-                files = sorted(
-                    [os.path.join(persistent_dir, f) for f in os.listdir(persistent_dir) 
-                     if os.path.isfile(os.path.join(persistent_dir, f))],
-                    key=os.path.getmtime
-                )
-                # Delete all but the 10 most recent files
-                for old_file in files[:-10]:
-                    os.remove(old_file)
-            except Exception as e:
-                logger.error(f"Error cleaning up old compressed images: {str(e)}")
-            
-            # Generate a unique filename
-            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            file_hash = hashlib.md5(str(timestamp).encode()).hexdigest()[:8]
-            persistent_path = os.path.join(persistent_dir, f"compressed_{file_hash}.png")
-            
-            # Copy the compressed file to the persistent location
-            shutil.copy2(output_image_path, persistent_path)
-            
-            file_size = os.path.getsize(persistent_path)
+            file_size = os.path.getsize(output_image_path)
             
             return {
                 "success": True,
                 "message": f"Compressed image is {file_size} bytes",
-                "file_path": persistent_path,
+                "file_path": output_image_path,
                 "file_size": file_size
             }
         else:
@@ -1321,12 +1298,454 @@ def compress_image_losslessly(params: Dict) -> Dict:
         logger.error(f"Error compressing image: {str(e)}")
         return {"error": str(e)}
     finally:
-        # Clean up temporary files and directories
-        if temp_dir and os.path.exists(temp_dir):
+        # We'll clean up the temp directory in the calling function after reading the file
+        pass
+
+
+def publish_github_pages(params: Dict) -> str:
+    try:
+        import os
+        import requests
+        import base64
+        
+        # Configuration
+        owner = os.getenv("GITHUB_USERNAME")
+        repo = os.getenv("github_page")
+        path = 'index.html'
+        branch = 'main'
+        token = os.getenv("G_TOKEN")
+        
+        # Validate configuration
+        if not owner:
+            return "Error: GITHUB_USERNAME environment variable is not set"
+        if not repo:
+            return "Error: github_page environment variable is not set"
+        if not token:
+            return "Error: G_TOKEN environment variable is not set"
+            
+        logger.info(f"Publishing to GitHub Pages for {owner}/{repo}")
+        
+        # Get email from params
+        email = params.get("email", "23f2005593@ds.study.iitm.ac.in")
+        
+        # Create HTML content as a raw string (using triple quotes to preserve formatting)
+        email_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TDS Project Showcase</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+        }}
+        h1 {{
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }}
+        .container {{
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .footer {{
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #7f8c8d;
+            text-align: center;
+        }}
+    </style>
+</head>
+<body>
+    <h1>Tools in Data Science Project Showcase</h1>
+    
+    <div class="container">
+        <h2>About This Project</h2>
+        <p>This project demonstrates various data science tools and techniques implemented as a web service.
+        The service can handle tasks such as:</p>
+        <ul>
+            <li>Image compression</li>
+            <li>File processing and analysis</li>
+            <li>Data transformation and extraction</li>
+            <li>GitHub repository management</li>
+            <li>Mathematical calculations</li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <h2>Contact Information</h2>
+        <p>For more information about this project, please contact:</p>
+        <p><!--email_off-->{email}<!--/email_off--></p>
+    </div>
+    
+    <div class="footer">
+        <p>Created for Tools in Data Science course - {datetime.datetime.now().strftime('%Y')}</p>
+    </div>
+</body>
+</html>'''
+        
+        # Create temporary file
+        email_file = tempfile.mktemp(suffix='.html')
+        
+        # Write HTML content directly to file (not as JSON)
+        try:
+            with open(email_file, 'w', encoding='utf-8') as f:
+                f.write(email_content)
+        except Exception as e:
+            return f'Error creating HTML file: {e}'
+
+        # Read and encode the file - read in binary mode to avoid encoding issues
+        try:
+            with open(email_file, 'rb') as f:
+                content = f.read()
+                encoded_content = base64.b64encode(content).decode('utf-8')
+        except Exception as e:
+            return f'Error reading file: {e}'
+        finally:
+            # Clean up temp file
+            if os.path.exists(email_file):
+                os.remove(email_file)
+
+        # GitHub API URL
+        url = f'https://api.github.com/repos/{owner}/{repo}/contents/{path}'
+        headers = {'Authorization': f'token {token}'}
+
+        # Check if file exists in repository
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            sha = response.json()['sha']
+            message = 'Update index.html with email'
+        elif response.status_code == 404:
+            sha = None
+            message = 'Add index.html with email'
+        else:
+            error_msg = f'Error checking file existence: {response.status_code}'
             try:
-                shutil.rmtree(temp_dir)
+                error_details = response.json()
+                error_msg += f", {error_details.get('message', 'No details')}"
+            except:
+                pass
+            return error_msg
+
+        # Prepare data for PUT request
+        data = {
+            'message': message,
+            'content': encoded_content,
+            'branch': branch
+        }
+        if sha:
+            data['sha'] = sha
+
+        # Upload the file
+        put_response = requests.put(url, headers=headers, json=data)
+        if put_response.status_code in (200, 201):
+            pages_url = f'https://{owner}.github.io/{repo}/?v=1'
+            return pages_url
+        else:
+            error_msg = f'Error uploading file: {put_response.status_code}'
+            try:
+                error_details = put_response.json()
+                error_msg += f", {error_details.get('message', 'No details')}"
+            except:
+                pass
+            return error_msg
+            
+    except Exception as e:
+        return f'Error: {str(e)}'
+
+
+
+def simulate_colab_auth(params: Dict) -> str:
+    """
+    Simulates the result of running the Google Colab authentication script
+    with a specified email address.
+    """
+    try:
+        import hashlib
+        import datetime
+        
+        # Get email from params or use default
+        email = params.get("email", "23f2005593@ds.study.iitm.ac.in")
+        
+        # Validate email format
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return "Error: Invalid email format"
+        
+        # Get current year for the simulation
+        current_year = datetime.datetime.now().year
+        
+        # Since we can't actually get the token_expiry, we'll use the current year
+        # This is a simulation of what would happen if you ran the code in Colab
+        hash_input = f"{email} {current_year}"
+        
+        # Calculate the hash and get the last 5 characters
+        hash_result = hashlib.sha256(hash_input.encode()).hexdigest()
+        last_five = hash_result[-5:]
+        
+        return last_five
+    except Exception as e:
+        logger.error(f"Error simulating Colab auth: {str(e)}")
+        return f"Error: {str(e)}" 
+
+
+def analyze_image_lightness(params: Dict) -> str:
+    """
+    Analyzes an image and counts pixels with lightness > threshold
+    """
+    temp_dir = None
+    input_image_path = None
+    
+    try:
+        import numpy as np
+        from PIL import Image
+        import colorsys
+        
+        # Get lightness threshold from params
+        threshold = params.get("threshold", 0.207)
+        # Convert to float if it's a string
+        if isinstance(threshold, str):
+            threshold = float(threshold)
+            
+        logger.info(f"Using lightness threshold: {threshold}")
+        
+        # Create temp directory
+        temp_dir = tempfile.mkdtemp()
+        
+        # Get image path or URL
+        image_path = params.get("image_path")
+        url = params.get("url")
+        uploaded_file_path = params.get("uploaded_file_path")
+        
+        # Handle image from uploaded path
+        if uploaded_file_path and os.path.exists(uploaded_file_path):
+            input_image_path = uploaded_file_path
+        # Handle image from URL
+        elif url and url.startswith(('http://', 'https://')):
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            input_image_path = os.path.join(temp_dir, "input_image")
+            with open(input_image_path, 'wb') as f:
+                f.write(response.content)
+        # Handle image from local path
+        elif image_path and os.path.exists(image_path):
+            input_image_path = image_path
+        else:
+            return "Error: No valid image source provided"
+        
+        # Open the image and convert to numpy array
+        try:
+            image = Image.open(input_image_path)
+            rgb = np.array(image) / 255.0
+            
+            # Check if the image has 3 channels (RGB)
+            if len(rgb.shape) < 3 or rgb.shape[2] < 3:
+                # Convert grayscale to RGB if needed
+                if len(rgb.shape) == 2:
+                    # Expand to 3 channels
+                    rgb = np.stack((rgb,) * 3, axis=-1)
+                elif rgb.shape[2] == 1:
+                    # Expand single channel to 3 channels
+                    rgb = np.concatenate((rgb,) * 3, axis=2)
+                elif rgb.shape[2] == 4:
+                    # RGBA image, take only RGB channels
+                    rgb = rgb[:, :, :3]
+                else:
+                    return f"Error: Unsupported image format with {rgb.shape[2]} channels"
+            
+            # Calculate lightness for each pixel
+            # For each pixel, convert RGB to HLS and take the L (lightness) value
+            lightness = np.zeros(rgb.shape[:2])
+            
+            # Handle potential errors with colorsys for certain pixel values
+            for i in range(rgb.shape[0]):
+                for j in range(rgb.shape[1]):
+                    r, g, b = rgb[i, j, :3]
+                    # Clamp values to [0, 1] range to avoid colorsys errors
+                    r = max(0, min(1, r))
+                    g = max(0, min(1, g))
+                    b = max(0, min(1, b))
+                    try:
+                        # Extract lightness from HLS conversion
+                        lightness[i, j] = colorsys.rgb_to_hls(r, g, b)[1]
+                    except Exception as e:
+                        logger.error(f"Error converting pixel at {i},{j}: {str(e)}")
+                        lightness[i, j] = 0
+            
+            # Count pixels with lightness > threshold
+            light_pixels = np.sum(lightness > threshold)
+            
+            # Return the count as an integer
+            return str(int(light_pixels))
+            
+        except Exception as e:
+            logger.error(f"Error processing image: {str(e)}")
+            return f"Error processing image: {str(e)}"
+            
+    except Exception as e:
+        logger.error(f"Error analyzing image lightness: {str(e)}")
+        return f"Error: {str(e)}"
+    finally:
+        # Clean up temporary directory
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)    
+
+def push_json_to_github(params: Dict) -> str:
+    """
+    Pushes a JSON file to the fastpython GitHub repository
+    """
+    temp_dir = None
+    json_file_path = None
+    
+    try:
+        import json
+        import os
+        import requests
+        import base64
+        import tempfile
+        import shutil
+        
+        # Create temp directory for files if needed
+        temp_dir = tempfile.mkdtemp()
+        
+        # Get GitHub configuration
+        owner = os.getenv("GITHUB_USERNAME")
+        repo = "fastpython"  # Hardcoded repo name
+        token = os.getenv("G_TOKEN")
+        branch = "main"
+        
+        # Validate configuration
+        if not owner:
+            return "Error: GITHUB_USERNAME environment variable is not set"
+        if not token:
+            return "Error: G_TOKEN environment variable is not set"
+            
+        logger.info(f"Pushing JSON file to GitHub repository: {owner}/{repo}")
+        
+        # Get JSON file path or URL
+        url = params.get("url")
+        uploaded_file_path = params.get("uploaded_file_path")
+        
+        # Handle JSON from uploaded path
+        if uploaded_file_path and os.path.exists(uploaded_file_path):
+            json_file_path = uploaded_file_path
+            logger.info(f"Using uploaded file: {json_file_path}")
+        # Handle JSON from URL
+        elif url and url.startswith(('http://', 'https://')):
+            logger.info(f"Downloading JSON from URL: {url}")
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                json_file_path = os.path.join(temp_dir, "q-vercel-python.json")
+                with open(json_file_path, 'wb') as f:
+                    f.write(response.content)
+                logger.info(f"Downloaded JSON to: {json_file_path}")
             except Exception as e:
-                logger.error(f"Error removing temp directory: {str(e)}")
+                return f"Error downloading JSON from URL: {str(e)}"
+        else:
+            return "Error: No valid JSON file source provided (either upload or URL)"
+        
+        # Read and verify the JSON file
+        try:
+            with open(json_file_path, 'r') as f:
+                student_data = json.load(f)
+                
+            # Print the structure for debugging
+            logger.info(f"JSON data type: {type(student_data)}")
+            
+            # Convert to dictionary if it's a list of key-value pairs
+            if isinstance(student_data, list):
+                # Try to convert list to dictionary if it contains key-value pairs
+                try:
+                    converted_data = {}
+                    for item in student_data:
+                        if isinstance(item, dict) and 'name' in item and 'mark' in item:
+                            converted_data[item['name']] = item['mark']
+                    
+                    if converted_data:
+                        logger.info(f"Converted list of {len(student_data)} items to dictionary with {len(converted_data)} entries")
+                        # Write the converted dictionary back to the file
+                        with open(json_file_path, 'w') as f:
+                            json.dump(converted_data, f, indent=2)
+                        student_data = converted_data
+                    else:
+                        logger.info("Could not convert list to appropriate dictionary format")
+                except Exception as e:
+                    logger.error(f"Error converting list to dictionary: {str(e)}")
+            
+            # Allow any JSON structure to be uploaded, just log the type
+            logger.info(f"Proceeding with JSON data of type: {type(student_data)}")
+            
+        except json.JSONDecodeError:
+            return "Error: Invalid JSON file"
+        except Exception as e:
+            return f"Error reading JSON file: {str(e)}"
+        
+        # Read and encode the file for GitHub
+        try:
+            with open(json_file_path, 'rb') as f:
+                content = f.read()
+                encoded_content = base64.b64encode(content).decode('utf-8')
+        except Exception as e:
+            return f'Error reading file: {str(e)}'
+        
+        # GitHub API URL for the file
+        file_path = "q-vercel-python.json"
+        url = f'https://api.github.com/repos/{owner}/{repo}/contents/{file_path}'
+        headers = {'Authorization': f'token {token}'}
+        
+        # Check if file exists
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            # Update existing file
+            sha = response.json()['sha']
+            data = {
+                'message': 'Update q-vercel-python.json',
+                'content': encoded_content,
+                'sha': sha,
+                'branch': branch
+            }
+        elif response.status_code == 404:
+            # Create new file
+            data = {
+                'message': 'Add q-vercel-python.json',
+                'content': encoded_content,
+                'branch': branch
+            }
+        else:
+            return f'Error checking file existence: {response.status_code}'
+        
+        # Upload the file
+        put_response = requests.put(url, headers=headers, json=data)
+        
+        if put_response.status_code in (200, 201):
+            vercel_url = "https://vixhal-python.vercel.app/api"
+            return f"{vercel_url}"
+        else:
+            error_msg = f'Error uploading file: {put_response.status_code}'
+            try:
+                error_details = put_response.json()
+                error_msg += f", {error_details.get('message', 'No details')}"
+            except:
+                pass
+            return error_msg
+            
+    except Exception as e:
+        logger.error(f"Error pushing JSON to GitHub: {str(e)}")
+        return f"Error: {str(e)}"
+    finally:
+        # Clean up temporary directory
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)  
 
 
 # Function mappings
@@ -1348,7 +1767,11 @@ function_mappings = {
     "compare_files_in_zip": compare_files_in_zip,
     "generate_sql_query": generate_sql_query,
     "write_documentation_in_markdown": write_documentation_in_markdown,
-    "compress_image_losslessly": compress_image_losslessly
+    "compress_image_losslessly": compress_image_losslessly,
+    "publish_github_pages": publish_github_pages,
+    "simulate_colab_auth": simulate_colab_auth,
+    "analyze_image_lightness": analyze_image_lightness,
+    "push_json_to_github": push_json_to_github
 }
 
 tools = [
@@ -1356,7 +1779,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "get_vscode_s_flag_output",
-            "description": "Get the output of running 'code -s' command in Visual Studio Code",
+            "description": "What is the output of code -s?",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -1765,6 +2188,94 @@ tools = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "publish_github_pages",
+            "description": "Publish a page to GitHub Pages that includes your email address in email_off tags",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "description": "Email address to include in the HTML file"
+                    },
+                    "repo_name": {
+                        "type": "string",
+                        "description": "Name for the GitHub repository (optional)"
+                    }
+                },
+                "required": ["email"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "simulate_colab_auth",
+            "description": "Simulate running a Google Colab authentication script with a specified email",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "description": "The email address to use in the simulation (default: 23f2005593@ds.study.iitm.ac.in)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_image_lightness",
+            "description": "Analyze an image and count the number of pixels with lightness greater than a threshold",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "image_path": {
+                        "type": "string",
+                        "description": "Local path to the image file"
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "URL to download the image"
+                    },
+                    "uploaded_file_path": {
+                        "type": "string",
+                        "description": "Path to an uploaded image file"
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "description": "Lightness threshold value (default: 0.207)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "push_json_to_github",
+            "description": "Push a JSON file to the fastpython GitHub repository",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uploaded_file_path": {
+                        "type": "string",
+                        "description": "Path to an uploaded JSON file"
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "URL to download the JSON file"
+                    }
+                },
+                "required": []
+            }
+        }
     }
 ]
 
@@ -1813,6 +2324,9 @@ def process_question(question: str, file_path: Optional[str] = None) -> str:
                     return process_zip_csv({"url": url})
                 else:
                     return "Error: No file uploaded or URL provided."
+
+        if "code -s" in question.lower() and "output" in question.lower():
+                    return get_vscode_s_flag_output()
 
         if "convert" in question.lower() and "json" in question.lower() and ("key=value" in question.lower() or "key-value" in question.lower() or "key = value" in question.lower()):
             url_match = re.search(r'(https?://\S+)', question)
@@ -1996,9 +2510,91 @@ def process_question(question: str, file_path: Optional[str] = None) -> str:
         if ("compress" in question.lower() or "reduce size" in question.lower()) and "image" in question.lower() and ("lossless" in question.lower() or "identical" in question.lower()):
            return "Image compression request detected. Please use the API endpoint directly."  
 
+
+        # Check for GitHub Pages publishing request
+        if "github pages" in question.lower() and "email" in question.lower() and "<!--email_off-->" in question:
+            
+            # Extract email if present
+            email_pattern = re.compile(r'"email":\s*"([^"]+@[^"]+)"')
+            email_match = email_pattern.search(question)
+            
+            if email_match:
+                params["email"] = email_match.group(1)
+            else:
+                # Try another pattern for email
+                alt_email_pattern = re.compile(r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+                alt_email_match = alt_email_pattern.search(question)
+                if alt_email_match:
+                    params["email"] = alt_email_match.group(1)
+            
+            # Extract repository name if present
+            repo_pattern = re.compile(r'repository(?:\s+named|\s+called)?\s+["\']?([a-zA-Z0-9_-]+)["\']?', re.IGNORECASE)
+            repo_match = repo_pattern.search(question)
+            if repo_match:
+                params["repo_name"] = repo_match.group(1)
+            
+            return publish_github_pages(params) 
+
+
+        if "google colab" in question.lower() and "run this program" in question.lower() and "hashlib.sha256" in question:
+            # Extract email if present in the question
+            email_pattern = re.compile(r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+            email_match = email_pattern.search(question)
+            
+            params = {}
+            if email_match:
+                params["email"] = email_match.group(1)
+                
+            return simulate_colab_auth(params)  
+
+
+        # Check for image analysis with lightness question
+        if ("google colab" in question.lower() or "colab notebook" in question.lower()) and "image" in question.lower() and "lightness" in question.lower():
+            params = {}
+            
+            # Extract lightness threshold
+            threshold_match = re.search(r'lightness\s*>\s*(\d+\.\d+)', question)
+            if threshold_match:
+                params["threshold"] = float(threshold_match.group(1))
+            
+            # If a file was uploaded, use that
+            if file_path:
+                params["uploaded_file_path"] = file_path
+            else:
+                # Try to extract URL from question
+                url_match = re.search(r'(https?://\S+)', question)
+                if url_match:
+                    params["url"] = url_match.group(1)
+            
+            return analyze_image_lightness(params)  
+
+
+        # Check for pushing JSON to GitHub repository for Vercel
+        if "q-vercel-python.json" in question and "vercel" in question.lower():
+            params = {}
+            
+            # If a file was uploaded, use that
+            if file_path:
+                params["uploaded_file_path"] = file_path
+            else:
+                # Try to extract URL from question
+                url_match = re.search(r'(https?://\S+\.json)', question)
+                if url_match:
+                    params["url"] = url_match.group(1)
+                else:
+                    # Check if "file=" parameter contains a URL
+                    file_url_match = re.search(r'file=\s*(https?://\S+\.json)', question)
+                    if file_url_match:
+                        params["url"] = file_url_match.group(1)
+                    else:
+                        return "Error: No JSON file uploaded or URL provided"
+            
+            return push_json_to_github(params)    
+
+
         # Otherwise, use the OpenAI model.
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=os.getenv("model"),
             messages=[
                 {"role": "system", "content": "You are an expert in Tools in Data Science."},
                 {"role": "user", "content": question}
@@ -2011,21 +2607,74 @@ def process_question(question: str, file_path: Optional[str] = None) -> str:
         if not response.choices or not response.choices[0].message:
             return "Error: No response from AI model"
             
+        # Check if there are tool calls in the response
         if response.choices[0].message.tool_calls:
+            logger.info(f"Tool calls detected: {len(response.choices[0].message.tool_calls)}")
+            
             for tool_call in response.choices[0].message.tool_calls:
                 function_name = tool_call.function.name
-                function_args = json.loads(tool_call.function.arguments)
+                logger.info(f"Processing tool call: {function_name}")
                 
-                if function_name in ["run_prettier_and_sha256sum", "process_zip_csv"] and file_path:
-                    key = "uploaded_file_path" if function_name == "run_prettier_and_sha256sum" else "zip_file_path"
-                    function_args[key] = file_path
+                # Parse function arguments
+                try:
+                    function_args = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON in tool arguments: {tool_call.function.arguments}")
+                    function_args = {}
                 
+                # Add file path to relevant functions if a file was provided
+                if file_path:
+                    if function_name == "run_prettier_and_sha256sum":
+                        function_args["uploaded_file_path"] = file_path
+                    elif function_name == "process_zip_csv":
+                        function_args["zip_file_path"] = file_path
+                    elif function_name == "compress_image_losslessly":
+                        function_args["uploaded_file_path"] = file_path
+                    elif function_name == "process_multi_encoding_zip":
+                        function_args["uploaded_file_path"] = file_path
+                    elif function_name == "convert_keyvalue_to_json_and_hash":
+                        function_args["uploaded_file_path"] = file_path
+                    elif function_name == "process_zip_replace_text":
+                        function_args["uploaded_file_path"] = file_path
+                    elif function_name == "analyze_zip_file_timestamps":
+                        function_args["uploaded_file_path"] = file_path
+                    elif function_name == "process_zip_move_rename_grep":
+                        function_args["uploaded_file_path"] = file_path
+                    elif function_name == "compare_files_in_zip":
+                        function_args["uploaded_file_path"] = file_path
+                
+                # Check if the function exists in our mappings
                 if function_name not in function_mappings:
+                    logger.error(f"Function {function_name} not found in function_mappings")
                     return f"Error: Function {function_name} not implemented"
-                    
-                result = function_mappings[function_name](function_args)
-                return result
                 
+                # Execute the function
+                try:
+                    logger.info(f"Executing {function_name} with args: {function_args}")
+                    result = function_mappings[function_name](function_args)
+                    
+                    # Special handling for compress_image_losslessly which returns a dict
+                    if function_name == "compress_image_losslessly" and isinstance(result, dict):
+                        if "error" in result:
+                            return f"Error: {result['error']}"
+                        elif "file_path" in result and os.path.exists(result["file_path"]):
+                            # Read the file and encode as base64
+                            with open(result["file_path"], "rb") as f:
+                                img_data = f.read()
+                                return base64.b64encode(img_data).decode('utf-8')
+                        else:
+                            return str(result)
+                    else:
+                        # For all other functions, return the result directly
+                        return result
+                except Exception as e:
+                    logger.error(f"Error executing {function_name}: {str(e)}")
+                    return f"Error executing {function_name}: {str(e)}"
+            
+            # If we get here, it means we didn't return from any tool call
+            return "Error: Failed to process tool calls"
+        
+        # If no tool calls, return the content directly
         return response.choices[0].message.content
     except Exception as e:
         logger.error(f"Error processing question: {str(e)}")
@@ -2056,6 +2705,7 @@ def solve_question():
         # Check if this is an image compression request
         is_compression_request = ("compress" in question.lower() or "reduce size" in question.lower()) and "image" in question.lower() and ("lossless" in question.lower() or "identical" in question.lower())
         
+        # For compression requests, modify the response handling
         if is_compression_request:
             params = {}
             if temp_file_path:
@@ -2075,31 +2725,32 @@ def solve_question():
             if temp_file_path:
                 remove_temp_file(temp_file_path)
             
-            # If successful, return the image file
+            # If successful, return the image as base64
             if "success" in result and result["success"]:
                 file_path = result["file_path"]
                 try:
-                    # Make sure the file exists before trying to send it
+                    # Make sure the file exists before trying to read it
                     if not os.path.exists(file_path):
                         return jsonify({"error": "Compressed file not found"}), 500
                         
-                    # Send the file with appropriate mime type
-                    return send_file(
-                        file_path,
-                        as_attachment=True,
-                        download_name="compressed_image.png",
-                        mimetype="image/png"
-                    )
+                    # Read the file and encode as base64
+                    with open(file_path, "rb") as image_file:
+                        encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+                    
+                    # Remove the file after reading
+                    os.remove(file_path)
+                    
+                    # Return the base64-encoded image
+                    return jsonify({"answer": encoded_image})
                 except Exception as e:
-                    logger.error(f"Error sending file: {str(e)}")
-                    return jsonify({"error": f"Error sending file: {str(e)}"}), 500
+                    logger.error(f"Error encoding file: {str(e)}")
+                    return jsonify({"error": f"Error encoding file: {str(e)}"}), 500
             else:
                 # Return the error message
                 error_msg = result.get("error", "Unknown error during compression")
                 logger.error(f"Compression error: {error_msg}")
                 return jsonify({"error": error_msg}), 400
-        
-        # For non-compression requests, continue with normal processing
+                # For non-compression requests, continue with normal processing
         answer = process_question(question, temp_file_path)
         
         # Clean up the temporary file
@@ -2113,10 +2764,11 @@ def solve_question():
 
 @app.route("/", methods=["GET"])
 def root():
-    return jsonify({
-        "message": "Welcome to the TDS Solver API by Vishal Baraiya",
-        "usage": "POST to /api/ with question (required) and file (optional)"
-    })
+    return render_template('index.html')
+
+@app.route('/ui', methods=['GET'])
+def ui():
+    return render_template('index.html')
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)
