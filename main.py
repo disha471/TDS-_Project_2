@@ -32,8 +32,8 @@ app = Flask(__name__)
 
 # Initialize OpenAI client
 client = OpenAI(
-    api_key=os.getenv("Aiproxy_token"),
-    base_url=os.getenv("http://aiproxy.sanand.workers.dev/openai/v1"),
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url=os.getenv("base_url"),
 )
 
 def save_upload_file_temp(file_storage) -> Optional[str]:
@@ -451,11 +451,11 @@ def manage_github_email_json(params: Dict) -> str:
         import requests
         import base64
         # Configuration
-        owner = os.getenv("disha471")  # replace with your GitHub username
-        repo = os.getenv("TDS-_Project_2")
+        owner = os.getenv("GITHUB_USERNAME")  # replace with your GitHub username
+        repo = os.getenv("GITHUB_REPO_NAME")
         path = 'email.json'
         branch = 'main'
-        token = os.getenv("Github_token")
+        token = os.getenv("G_TOKEN")
         
         # Get email from params
         email = params.get("email", "example@example.com")
@@ -1172,7 +1172,7 @@ The query you will return "SELECT SUM(units * price) FROM tickets WHERE LOWER(TR
         
         # Use the LLM to generate the SQL query
         response = client.chat.completions.create(
-            model=os.getenv("gpt-4o-mini"),
+            model=os.getenv("model"),
             messages=[
                 {"role": "system", "content": "You are an expert SQL developer."},
                 {"role": "user", "content": prompt}
@@ -1999,7 +1999,7 @@ def process_question(question: str, file_path: Optional[str] = None) -> str:
 
         # Otherwise, use the OpenAI model.
         response = client.chat.completions.create(
-            model=os.getenv("gpt-4o-mini"),
+            model=os.getenv("model"),
             messages=[
                 {"role": "system", "content": "You are an expert in Tools in Data Science."},
                 {"role": "user", "content": question}
