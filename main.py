@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify, send_file
-from flask import render_template, send_from_directory
 from typing import Optional, Dict, Any
 import os
 import json
@@ -33,7 +32,7 @@ app = Flask(__name__)
 # Initialize OpenAI client
 client = OpenAI(
     api_key=os.getenv("Aiproxy_token"),
-    base_url=os.getenv("base_url"),
+    base_url="http://aiproxy.sanand.workers.dev/openai/v1",
 )
 
 def save_upload_file_temp(file_storage) -> Optional[str]:
@@ -451,8 +450,8 @@ def manage_github_email_json(params: Dict) -> str:
         import requests
         import base64
         # Configuration
-        owner = os.getenv("GITHUB_USERNAME")  # replace with your GitHub username
-        repo = os.getenv("GITHUB_REPO_NAME")
+        owner = os.getenv("disha471")  # replace with your GitHub username
+        repo = os.getenv("TDS-_Project_2")
         path = 'email.json'
         branch = 'main'
         token = os.getenv("Github_token")
@@ -1172,7 +1171,7 @@ The query you will return "SELECT SUM(units * price) FROM tickets WHERE LOWER(TR
         
         # Use the LLM to generate the SQL query
         response = client.chat.completions.create(
-            model=os.getenv("model"),
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an expert SQL developer."},
                 {"role": "user", "content": prompt}
@@ -1245,7 +1244,7 @@ def compress_image_losslessly(params: Dict) -> Dict:
         output_image_path = os.path.join(temp_dir, "compressed_image.png")
         
         # Use Tinify API for compression
-        tinify_api_key = os.getenv("tinify_api_key")
+        tinify_api_key = "DKDVH1KV8wnwrbNrkCKvm1K4SwYR8xCP"
         
         # Make API request to Tinify
         with open(input_image_path, 'rb') as image_file:
@@ -1999,7 +1998,7 @@ def process_question(question: str, file_path: Optional[str] = None) -> str:
 
         # Otherwise, use the OpenAI model.
         response = client.chat.completions.create(
-            model=os.getenv("model"),
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an expert in Tools in Data Science."},
                 {"role": "user", "content": question}
@@ -2114,11 +2113,10 @@ def solve_question():
 
 @app.route("/", methods=["GET"])
 def root():
-    return render_template('index.html')
-
-@app.route('/ui', methods=['GET'])
-def ui():
-    return render_template('index.html')
+    return jsonify({
+        "message": "Welcome to the TDS Solver API by Vishal Baraiya",
+        "usage": "POST to /api/ with question (required) and file (optional)"
+    })
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)
