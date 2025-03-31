@@ -31,7 +31,7 @@ app = Flask(__name__)
 
 # Initialize OpenAI client
 client = OpenAI(
-    api_key=os.getenv("Aiproxy_token"),
+    api_key=os.getenv("AIPROXY_TOKEN"),
     base_url="http://aiproxy.sanand.workers.dev/openai/v1",
 )
 
@@ -450,11 +450,11 @@ def manage_github_email_json(params: Dict) -> str:
         import requests
         import base64
         # Configuration
-        owner = os.getenv("disha471")  # replace with your GitHub username
-        repo = os.getenv("TDS-_Project_2")
+        owner = os.getenv("Dipshikha23f2")  # replace with your GitHub username
+        repo = os.getenv("TDS-Project-2 ")
         path = 'email.json'
         branch = 'main'
-        token = os.getenv("Github_token")
+        token = os.getenv("Token")
         
         # Get email from params
         email = params.get("email", "example@example.com")
